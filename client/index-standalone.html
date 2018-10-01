@@ -13,68 +13,76 @@
       AFRAME.registerSystem('multiplayer',
       {
         schema: {},
-        init() {
-          this._scene = document.querySelector('a-scene');
-          this._socket = io('http://localhost:1338');
-          this._joinMe();
+        init() { //A-Frame system hook
+          this.scene = document.querySelector('a-scene');
+          this.socket = io('http://localhost:1338');
 
-          this._socket.on('join', (user) => this._spawnUser(user));
+          this.joinServer();
 
-          this._socket.on('leave', (id) => this._removeUser(id));
+          this.socket.on('join', (user) => this.spawnUser(user));
 
-          this._socket.on('state', (id, state) => updateEntityState(this._getUserEntity(id), state));
+          this.socket.on('leave', (id) => this.removeUser(id));
+
+          this.socket.on('state', (id, state) => updateEntityState(getUserEntity(id), state));
         },
-        tick() {
-          this._updateState();
 
-          //if(this._stateChanged()) { // Not working correctly
-            this._sendState();
+        tick() { //A-Frame system hook
+          this.updateState();
+
+          //if(this.stateChanged()) { // Not working correctly
+            this.sendState();
           //}
         },
 
-        // Spawn and remove users
-        _joinMe() {
+        joinServer() {
           let userData = {guest: true, state: {position: initialPos, rotation: initialRot}};
-          this._socket.emit('join', userData, (users) => this._spawnInitialUsers(users));
+          this.socket.emit('join', userData, (users) => this.spawnInitialUsers(users));
         },
-        _spawnInitialUsers(users) {
+
+        spawnInitialUsers(users) {
           for(let user of users) {
-            this._spawnUser(user);
+            this.spawnUser(user);
           }
         },
-        _spawnUser(user) {
+
+        spawnUser(user) {
           let userEntity = buildAvatarEntity(user);
           userEntity.setAttribute('user-id', user.id);
           updateEntityState(userEntity, user.state);
 
-          this._scene.appendChild(userEntity);
-        },
-        _removeUser(id) {
-          let userEntity = this._getUserEntity(id);
-          this._scene.removeChild(userEntity);
-        },
-        _getUserEntity(id) {
-          return document.querySelector(`[user-id='${id}']`);
+          this.scene.appendChild(userEntity);
         },
 
-        // Position & rotation synchronization
-        _updateState() {
-          this._lastState = this._currentState;
-          let camera = document.querySelector('a-scene').systems['camera'].activeCameraEl;
-
-          this._currentState = getEntityState(camera);
+        removeUser(id) {
+          let userEntity = getUserEntity(id);
+          this.scene.removeChild(userEntity);
         },
-        _stateChanged() {
-          //return !equals(this._lastState, this._currentState);
 
-          return  !this._lastState ||
-                  this._lastState.position != this._currentState.position ||
-                  this._lastState.rotation != this._currentState.rotation;
+        updateState() { // Position & rotation synchronization
+          this.lastState = this.currentState;
+
+          let camera = document.querySelector('a-entity[camera]');
+
+          if(camera)
+            this.currentState = getEntityState(camera);
         },
-        _sendState() {
-          this._socket.emit('state', this._currentState);
+
+        stateChanged() {
+          //return !equals(this.lastState, this.currentState);
+
+          return  !this.lastState ||
+                  this.lastState.position != this.lastState.position ||
+                  this.lastState.rotation != this.lastState.rotation;
+        },
+
+        sendState() {
+          this.socket.emit('state', this.currentState);
         }
       });
+
+      function getUserEntity(id) {
+        return document.querySelector(`[user-id='${id}']`);
+      }
 
       function buildAvatarEntity(user) {
         let userMarkup = `<a-entity>
