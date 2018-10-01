@@ -1,0 +1,120 @@
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="https://aframe.io/releases/0.8.0/aframe.min.js"></script>
+    <script src="https://unpkg.com/aframe-text-geometry-component@^0.5.0/dist/aframe-text-geometry-component.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.1.1/socket.io.slim.js"></script>
+    <script type="text/javascript" src="https://jspm.io/system@0.19.js"></script>
+
+    <script>
+      let initialPos = {x: 0, y: 1.6, z: 0};
+      let initialRot = {x: 0, y: 0, z: 0};
+
+      AFRAME.registerSystem('multiplayer',
+      {
+        schema: {},
+        init() {
+          this._scene = document.querySelector('a-scene');
+          this._socket = io('http://localhost:1338');
+          this._joinMe();
+
+          this._socket.on('join', (user) => this._spawnUser(user));
+
+          this._socket.on('leave', (id) => this._removeUser(id));
+
+          this._socket.on('state', (id, state) => updateEntityState(this._getUserEntity(id), state));
+        },
+        tick() {
+          this._updateState();
+
+          //if(this._stateChanged()) { // Not working correctly
+            this._sendState();
+          //}
+        },
+
+        // Spawn and remove users
+        _joinMe() {
+          let userData = {guest: true, state: {position: initialPos, rotation: initialRot}};
+          this._socket.emit('join', userData, (users) => this._spawnInitialUsers(users));
+        },
+        _spawnInitialUsers(users) {
+          for(let user of users) {
+            this._spawnUser(user);
+          }
+        },
+        _spawnUser(user) {
+          let userEntity = buildAvatarEntity(user);
+          userEntity.setAttribute('user-id', user.id);
+          updateEntityState(userEntity, user.state);
+
+          this._scene.appendChild(userEntity);
+        },
+        _removeUser(id) {
+          let userEntity = this._getUserEntity(id);
+          this._scene.removeChild(userEntity);
+        },
+        _getUserEntity(id) {
+          return document.querySelector(`[user-id='${id}']`);
+        },
+
+        // Position & rotation synchronization
+        _updateState() {
+          this._lastState = this._currentState;
+          let camera = document.querySelector('a-scene').systems['camera'].activeCameraEl;
+
+          this._currentState = getEntityState(camera);
+        },
+        _stateChanged() {
+          //return !equals(this._lastState, this._currentState);
+
+          return  !this._lastState ||
+                  this._lastState.position != this._currentState.position ||
+                  this._lastState.rotation != this._currentState.rotation;
+        },
+        _sendState() {
+          this._socket.emit('state', this._currentState);
+        }
+      });
+
+      function buildAvatarEntity(user) {
+        let userMarkup = `<a-entity>
+          <a-box color="#880000"></a-box>
+          <a-entity text-geometry="value: ${user.id}" material="color: #880000" position="-4 1 0"></a-entity>
+        </a-entity>`;
+
+        return buildEntityFromString(userMarkup);
+      }
+
+      function buildEntityFromString(markupString) {
+        let entity = document.createElement('a-entity');
+        entity.insertAdjacentHTML('afterbegin', markupString);
+        return entity.firstChild;
+      }
+
+      function getEntityState(entity) {
+        let position = entity.getAttribute('position');
+        let rotation = entity.getAttribute('rotation');
+
+        return {position, rotation};
+      }
+
+      function updateEntityState(entity, state) {
+        let pos = state.position;
+        if(pos) {
+          entity.setAttribute('position', pos);
+        }
+
+        let rot = state.rotation;
+        if(rot) {
+          entity.setAttribute('rotation', rot);
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <a-scene>
+      <a-plane position="0 0 -4" rotation="-90 0 0" width="256" height="256" color="#555555"></a-plane>
+      <a-sky color="#ECECEC"></a-sky>
+    </a-scene>
+  </body>
+</html>
